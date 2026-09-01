@@ -1,0 +1,9 @@
+## Interface: 120100
+## Title: |cffffff00Auto|rItemMacro
+## Notes: General-purpose consumable macro generator. Define named macro presets with priority item lists — the generated macro always uses the best available item in your bags.
+## Author: CeilingPanda
+## Version: @project-version@
+## SavedVariables: AutoItemMacroDB
+## Category-enUS: Combat
+
+AutoItemMacro.lua
