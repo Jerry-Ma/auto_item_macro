@@ -8,4 +8,6 @@
 ## SavedVariables: AutoItemMacroDB
 ## Category-enUS: Combat
 
+## X-Curse-Project-ID: 1689791
+
 AutoItemMacro.lua
