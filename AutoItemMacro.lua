@@ -26,6 +26,13 @@ local MAX_MACRO_LENGTH     = 255
 local MAX_MACRO_NAME_LEN   = 16
 local MACRO_NAME_PREFIX    = "aim_"  -- prefixes generated default names only
 local DEFAULT_ICON         = 134400  -- INV_Misc_QuestionMark
+-- Extension omitted on purpose: the client appends it. This is the reduced
+-- mark, not Media/Avatar.png -- everything in-game draws the logo at 14-20px,
+-- where the avatar's frame and wordmark turn to mush.
+local LOGO_TEXTURE         = "Interface\\AddOns\\AutoItemMacro\\Media\\Logo"
+-- The logo inline in a chat line, sized to sit on the text baseline.
+local LOGO_INLINE          = "|T" .. LOGO_TEXTURE .. ":14:14:0:0|t "
+local CHAT_PREFIX          = LOGO_INLINE .. "|cffffff00AutoItemMacro:|r "
 local PRESET_ROW_HEIGHT    = 30
 local ITEM_ROW_HEIGHT      = 35
 
@@ -522,6 +529,14 @@ BuildUI = function()
     f:SetScript("OnDragStop", f.StopMovingOrSizing)
     f:Hide()
     f.TitleText:SetText("|cffffff00Auto|rItemMacro  |cff888888v" .. ADDON_VERSION .. "|r")
+
+    -- Addon logo in the title bar, left of the centred title. OVERLAY so it
+    -- sits above the template's own title-bar art.
+    f.logo = f:CreateTexture(nil, "OVERLAY")
+    f.logo:SetSize(18, 18)
+    f.logo:SetPoint("TOPLEFT", 8, -4)
+    f.logo:SetTexture(LOGO_TEXTURE)
+
     mainFrame = f
     tinsert(_G.UISpecialFrames, "AutoItemMacroFrame")
 
@@ -713,7 +728,7 @@ BuildUI = function()
     f.updateBtn:SetPoint("BOTTOMRIGHT", -10, 10)
     f.updateBtn:SetScript("OnClick", function()
         UpdateAllMacros()
-        _G.print("|cffffff00AutoItemMacro:|r All macros updated.")
+        _G.print(CHAT_PREFIX .. "All macros updated.")
     end)
 
     f:SetScript("OnShow", function()
@@ -795,10 +810,10 @@ _G.SlashCmdList["AUTOITEMMACRO"] = function(msg)
             return
         end
         UpdateAllMacros()
-        _G.print("|cffffff00AutoItemMacro:|r All macros updated.")
+        _G.print(CHAT_PREFIX .. "All macros updated.")
 
     elseif msg == "help" then
-        _G.print("|cffffff00AutoItemMacro|r commands:")
+        _G.print(LOGO_INLINE .. "|cffffff00AutoItemMacro|r commands:")
         _G.print("  |cffffd700/aim|r           — open / close the options window")
         _G.print("  |cffffd700/aim update|r     — force-update all macro presets")
         _G.print("  |cffffd700/aim help|r       — show this help text")
@@ -817,6 +832,6 @@ _G.SlashCmdList["AUTOITEMMACRO"] = function(msg)
         end
 
     else
-        _G.print("|cffffff00AutoItemMacro:|r Unknown command. Type |cffffd700/aim help|r for a list.")
+        _G.print(CHAT_PREFIX .. "Unknown command. Type |cffffd700/aim help|r for a list.")
     end
 end

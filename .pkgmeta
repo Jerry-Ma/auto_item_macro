@@ -4,6 +4,6 @@ ignore:
   - .github
   - README.md
   - Tools
-  # Source artwork for the CurseForge project avatar. The game cannot load PNG
-  # -- Media/Icon.tga is the one that ships.
-  - Media/Icon.png
+  # The CurseForge project avatar, uploaded on the website. The game cannot
+  # load PNG -- Media/Logo.tga is the one that ships.
+  - Media/Avatar.png

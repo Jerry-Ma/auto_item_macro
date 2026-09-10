@@ -169,6 +169,31 @@ function Variant-Word($g, [float]$S) {
     DrawBar $g (($S - $rw * 0.56) / 2) (396 * $u) ($rw * 0.56) (22 * $u) $u $false
 }
 
+# The mark reduced for small sizes. No frame and no wordmark: at the 14-20px
+# the title bar and chat lines draw it at, frame chrome and letterforms both
+# collapse into mush, so only the priority stack survives -- full bleed, and in
+# gold throughout so the lower entries still read against a dark background.
+function Variant-Glyph($g, [float]$S) {
+    # Gaps are as tall as the bars themselves: any tighter and the downscale to
+    # 14px blends the three into one solid block. No glow here for the same
+    # reason -- it bleeds straight across the gaps at that size.
+    $u  = $S / 512.0
+    $bh = 88 * $u
+    $r  = $bh * 0.30
+
+    $w1 = 468 * $u; $x1 = ($S - $w1) / 2; $y1 = 48  * $u
+    $w2 = 366 * $u; $x2 = ($S - $w2) / 2; $y2 = 212 * $u
+    $w3 = 264 * $u; $x3 = ($S - $w3) / 2; $y3 = 376 * $u
+
+    foreach ($bar in @(@($x2,$y2,$w2), @($x3,$y3,$w3))) {
+        $p = RoundRect $bar[0] $bar[1] $bar[2] $bh $r
+        $g.FillPath((VGrad $bar[0] $bar[1] $bar[2] $bh (Col "A2823F") (Col "6B5423")), $p)
+    }
+
+    $p = RoundRect $x1 $y1 $w1 $bh $r
+    $g.FillPath((VGrad $x1 $y1 $w1 $bh (Col "FFF6DA") (Col "E9BE5C")), $p)
+}
+
 function Variant-Bolt($g, [float]$S) {
     # Item slots with a bolt through them: "auto-use the right item".
     $u = $S / 512.0
@@ -223,11 +248,12 @@ function Render([string]$variant, [int]$S, [string]$path) {
     $g.PixelOffsetMode   = [System.Drawing.Drawing2D.PixelOffsetMode]::HighQuality
     $g.Clear([System.Drawing.Color]::Transparent)
 
-    DrawFrame $g ([float]$S)
+    if ($variant -ne "glyph") { DrawFrame $g ([float]$S) }
     switch ($variant) {
         "stack" { Variant-Stack $g ([float]$S) }
         "word"  { Variant-Word  $g ([float]$S) }
         "bolt"  { Variant-Bolt  $g ([float]$S) }
+        "glyph" { Variant-Glyph $g ([float]$S) }
     }
 
     $g.Dispose()
@@ -240,8 +266,16 @@ function Render([string]$variant, [int]$S, [string]$path) {
     Write-Output $path
 }
 
-# The shipped artwork: a 512px PNG for the CurseForge project avatar (their
-# minimum is 400x400) and a 64px TGA for the in-game AddOn list, which is the
-# only one of the two the game itself can load.
-Render "word" 512 (Join-Path $OutDir "Icon.png")
-Render "word" 64  (Join-Path $OutDir "Icon.tga")
+# The shipped artwork. Two files, because the two jobs have nothing in common:
+#
+#   Avatar.png  512px, the CurseForge project avatar (their minimum is 400x400).
+#               Shown large on the project page, so it can carry the frame and
+#               the wordmark.
+#   Logo.tga     64px, everything in-game -- the AddOn list, the window title
+#               bar, chat lines. All three draw it at 14-20px, where the frame
+#               and the letterforms both dissolve, so this is the reduced mark.
+#
+# WoW cannot load PNG and CurseForge will not take a TGA, so neither file can
+# do the other's job even if the art were the same.
+Render "word"  512 (Join-Path $OutDir "Avatar.png")
+Render "glyph" 64  (Join-Path $OutDir "Logo.tga")
