@@ -61,6 +61,7 @@ local MOD_COLOR_HEX = {
 
 local db                   = nil   -- reference to AutoItemMacroDB
 local mainFrame            = nil
+local minimapButton        = nil
 local selectedPresetIndex  = nil   -- 1-based index into db.presets
 local presetRowPool        = {}    -- reusable Frame objects for preset list
 local itemRowPool          = {}    -- reusable Frame objects for item list
@@ -513,6 +514,168 @@ RefreshItemList = function()
     end
 end
 
+-- ── Opening the editor ────────────────────────────────────────────────────────
+
+-- Shared by the slash command, the minimap button and the addon compartment.
+-- Macros cannot be edited in combat, so all three refuse the same way.
+local function ToggleUI()
+    if InCombatLockdown() then
+        _G.UIErrorsFrame:AddMessage("|cffFF4444AutoItemMacro:|r Cannot open UI during combat.", 1, 0.27, 0.27, 1)
+        return
+    end
+    if not mainFrame then return end
+    if mainFrame:IsShown() then mainFrame:Hide() else mainFrame:Show() end
+end
+
+-- Blizzard calls this by name from the addon compartment next to the minimap,
+-- so it has to be a global. ## AddonCompartmentFunc in the .toc names it.
+function _G.AutoItemMacro_OnCompartmentClick()
+    ToggleUI()
+end
+
+-- ── Minimap button ────────────────────────────────────────────────────────────
+-- Hand-rolled rather than LibDBIcon. This addon ships as a single file with no
+-- libraries, and pulling in LibStub + CallbackHandler + LDB + LibDBIcon to place
+-- one button would be most of the addon's weight. Borrowing another addon's copy
+-- instead would make our button appear and vanish with THEIR install.
+
+-- Gap between the minimap edge and the button's centre. LibDBIcon's own default,
+-- which is what puts this button on the same ring as every other addon's.
+local EDGE_GAP = 5
+
+-- Which quadrants of a given minimap shape are round. A square minimap needs the
+-- button pushed out to the diagonal instead of the circle, or it lands inside the
+-- map at the corners. GetMinimapShape is a convention that addons reshaping the
+-- minimap define; absent, it is round.
+local MINIMAP_SHAPES = {
+    ROUND = { true, true, true, true },
+    SQUARE = { false, false, false, false },
+    ["CORNER-TOPLEFT"] = { false, false, false, true },
+    ["CORNER-TOPRIGHT"] = { false, false, true, false },
+    ["CORNER-BOTTOMLEFT"] = { false, true, false, false },
+    ["CORNER-BOTTOMRIGHT"] = { true, false, false, false },
+    ["SIDE-LEFT"] = { false, true, false, true },
+    ["SIDE-RIGHT"] = { true, false, true, false },
+    ["SIDE-TOP"] = { false, false, true, true },
+    ["SIDE-BOTTOM"] = { true, true, false, false },
+    ["TRICORNER-TOPLEFT"] = { false, true, true, true },
+    ["TRICORNER-TOPRIGHT"] = { true, false, true, true },
+    ["TRICORNER-BOTTOMLEFT"] = { true, true, false, true },
+    ["TRICORNER-BOTTOMRIGHT"] = { true, true, true, false },
+}
+
+-- The radius comes from the minimap's ACTUAL size rather than a fixed 80px:
+-- most minimap addons resize it. Width and height are read separately so a
+-- non-square minimap still works.
+local function PositionMinimapButton()
+    if not minimapButton or not _G.Minimap then return end
+    local Minimap = _G.Minimap
+
+    local angle = math.rad(db and db.minimapAngle or 200)
+    local x, y = math.cos(angle), math.sin(angle)
+
+    -- Quadrant, in LibDBIcon's numbering: 1 = +x+y, 2 = -x+y, 3 = +x-y, 4 = -x-y.
+    local q = 1
+    if x < 0 then q = q + 1 end
+    if y > 0 then q = q + 2 end
+
+    local shape = (_G.GetMinimapShape and _G.GetMinimapShape()) or "ROUND"
+    local quad = MINIMAP_SHAPES[shape] or MINIMAP_SHAPES.ROUND
+
+    local w = (Minimap:GetWidth() / 2) + EDGE_GAP
+    local h = (Minimap:GetHeight() / 2) + EDGE_GAP
+
+    if quad[q] then
+        x, y = x * w, y * h
+    else
+        -- Square corner: project onto the diagonal, then clamp to the edges.
+        local dw = math.sqrt(2 * w * w) - 10
+        local dh = math.sqrt(2 * h * h) - 10
+        x = math.max(-w, math.min(x * dw, w))
+        y = math.max(-h, math.min(y * dh, h))
+    end
+
+    minimapButton:ClearAllPoints()
+    minimapButton:SetPoint("CENTER", Minimap, "CENTER", x, y)
+end
+
+local function BuildMinimapButton()
+    if minimapButton then return minimapButton end
+    if not _G.Minimap then return nil end
+
+    -- Geometry taken from LibDBIcon's retail button so this sits on the ring at
+    -- the same size as everyone else's. The numbers are not arbitrary: the 50x50
+    -- tracking border anchored TOPLEFT of a 31x31 button is what centres its ring.
+    local b = CreateFrame("Button", "AutoItemMacroMinimapButton", _G.Minimap)
+    b:SetSize(31, 31)
+    b:SetFrameStrata("MEDIUM")
+    b:SetFrameLevel(8)
+    b:RegisterForClicks("AnyUp")
+    b:RegisterForDrag("LeftButton")
+    b:SetHighlightTexture(136477)  -- UI-Minimap-ZoomButton-Highlight
+
+    local background = b:CreateTexture(nil, "BACKGROUND")
+    background:SetSize(24, 24)
+    background:SetTexture(136467)  -- UI-Minimap-Background
+    background:SetPoint("CENTER")
+
+    local icon = b:CreateTexture(nil, "ARTWORK")
+    icon:SetTexture(LOGO_TEXTURE)
+    icon:SetSize(18, 18)
+    icon:SetPoint("CENTER")
+    -- Round mask, so this reads as a minimap button rather than a sticker on one.
+    local mask = b:CreateMaskTexture()
+    mask:SetTexture("Interface\\CharacterFrame\\TempPortraitAlphaMask",
+        "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
+    mask:SetAllPoints(icon)
+    icon:AddMaskTexture(mask)
+
+    local ring = b:CreateTexture(nil, "OVERLAY")
+    ring:SetTexture(136430)        -- MiniMap-TrackingBorder
+    ring:SetSize(50, 50)
+    ring:SetPoint("TOPLEFT")
+
+    b:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_LEFT")
+        GameTooltip:AddLine("AutoItemMacro", 1, 0.82, 0)
+        GameTooltip:AddLine("Click to open the macro editor", 0.7, 0.7, 0.7)
+        GameTooltip:AddLine("Drag to move around the minimap", 0.5, 0.5, 0.5)
+        GameTooltip:Show()
+    end)
+    b:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    b:SetScript("OnClick", ToggleUI)
+
+    -- Dragging follows the cursor's angle around the minimap centre rather than
+    -- moving the frame freely, so the button cannot be dropped off the ring.
+    -- OnUpdate is set only while a drag is in progress and cleared on release,
+    -- so it costs nothing at rest.
+    local function DragUpdate()
+        local mx, my = _G.Minimap:GetCenter()
+        local cx, cy = _G.GetCursorPosition()
+        local scale = _G.Minimap:GetEffectiveScale()
+        cx, cy = cx / scale, cy / scale
+        if db then db.minimapAngle = math.deg(math.atan2(cy - my, cx - mx)) end
+        PositionMinimapButton()
+    end
+    b:SetScript("OnDragStart", function(self) self:SetScript("OnUpdate", DragUpdate) end)
+    b:SetScript("OnDragStop", function(self) self:SetScript("OnUpdate", nil) end)
+
+    minimapButton = b
+    PositionMinimapButton()
+    return b
+end
+
+local function ApplyMinimapButton()
+    if db and db.minimap == false then
+        if minimapButton then minimapButton:Hide() end
+        return
+    end
+    if BuildMinimapButton() then
+        PositionMinimapButton()
+        minimapButton:Show()
+    end
+end
+
 -- ── UI — Build ────────────────────────────────────────────────────────────────
 
 BuildUI = function()
@@ -722,6 +885,21 @@ BuildUI = function()
         if db then db.autoUpdate = self:GetChecked() end
     end)
 
+    -- Anchored off the auto-update label rather than a fixed x, so it stays
+    -- clear of it if that wording ever changes length.
+    f.minimapChk = CreateFrame("CheckButton", nil, f, "UICheckButtonTemplate")
+    f.minimapChk:SetSize(24, 24)
+    f.minimapChk:SetPoint("LEFT", f.autoUpdateChk.lbl, "RIGHT", 24, 0)
+    f.minimapChk.lbl = f.minimapChk:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    f.minimapChk.lbl:SetPoint("LEFT", f.minimapChk, "RIGHT", 4, 0)
+    f.minimapChk.lbl:SetText("Minimap button")
+    if db then f.minimapChk:SetChecked(db.minimap ~= false) end
+    f.minimapChk:SetScript("OnClick", function(self)
+        if not db then return end
+        db.minimap = self:GetChecked() and true or false
+        ApplyMinimapButton()
+    end)
+
     f.updateBtn = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
     f.updateBtn:SetSize(170, 24)
     f.updateBtn:SetText("Force Update All Macros")
@@ -753,14 +931,20 @@ eventFrame:SetScript("OnEvent", function(_, event, arg1)
         AutoItemMacroDB        = AutoItemMacroDB or {}
         AutoItemMacroDB.presets   = AutoItemMacroDB.presets   or {}
         AutoItemMacroDB.autoUpdate = (AutoItemMacroDB.autoUpdate ~= false)
+        AutoItemMacroDB.minimap    = (AutoItemMacroDB.minimap ~= false)
+        AutoItemMacroDB.minimapAngle = AutoItemMacroDB.minimapAngle or 200
         db = AutoItemMacroDB
         BuildUI()
 
     elseif event == "PLAYER_LOGIN" then
-        -- Sync auto-update checkbox, then push all macros to the game
-        if mainFrame and mainFrame.autoUpdateChk then
+        -- Sync the option checkboxes, then push all macros to the game
+        if mainFrame and mainFrame.autoUpdateChk and mainFrame.minimapChk then
             mainFrame.autoUpdateChk:SetChecked(db.autoUpdate)
+            mainFrame.minimapChk:SetChecked(db.minimap)
         end
+        -- Built at login, not at ADDON_LOADED: minimap addons resize and reshape
+        -- the minimap while loading, and the button's placement reads both.
+        ApplyMinimapButton()
         UpdateAllMacros()
         eventFrame:UnregisterEvent("PLAYER_LOGIN")
 
@@ -819,17 +1003,7 @@ _G.SlashCmdList["AUTOITEMMACRO"] = function(msg)
         _G.print("  |cffffd700/aim help|r       — show this help text")
 
     elseif msg == "" then
-        if InCombatLockdown() then
-            _G.UIErrorsFrame:AddMessage("|cffFF4444AutoItemMacro:|r Cannot open UI during combat.", 1, 0.27, 0.27, 1)
-            return
-        end
-        if mainFrame then
-            if mainFrame:IsShown() then
-                mainFrame:Hide()
-            else
-                mainFrame:Show()
-            end
-        end
+        ToggleUI()
 
     else
         _G.print(CHAT_PREFIX .. "Unknown command. Type |cffffd700/aim help|r for a list.")

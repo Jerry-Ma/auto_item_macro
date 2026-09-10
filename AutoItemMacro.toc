@@ -4,6 +4,7 @@
 ## Author: CeilingPanda
 ## Version: @project-version@
 ## IconTexture: Interface\AddOns\AutoItemMacro\Media\Logo
+## AddonCompartmentFunc: AutoItemMacro_OnCompartmentClick
 ## SavedVariables: AutoItemMacroDB
 ## Category-enUS: Combat
 
