@@ -10,3 +10,4 @@
 ## Category-enUS: Combat
 
 AutoItemMacro.lua
+AutoItemMacro_UI.lua
