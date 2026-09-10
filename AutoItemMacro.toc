@@ -3,6 +3,7 @@
 ## Notes: General-purpose consumable macro generator. Define named macro presets with priority item lists — the generated macro always uses the best available item in your bags.
 ## Author: CeilingPanda
 ## Version: @project-version@
+## IconTexture: Interface\AddOns\AutoItemMacro\Media\Icon
 ## SavedVariables: AutoItemMacroDB
 ## Category-enUS: Combat
 

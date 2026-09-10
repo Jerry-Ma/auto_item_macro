@@ -3,3 +3,7 @@ package-as: AutoItemMacro
 ignore:
   - .github
   - README.md
+  - Tools
+  # Source artwork for the CurseForge project avatar. The game cannot load PNG
+  # -- Media/Icon.tga is the one that ships.
+  - Media/Icon.png

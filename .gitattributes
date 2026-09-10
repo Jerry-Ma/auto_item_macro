@@ -1,0 +1,6 @@
+# core.autocrlf is on for this checkout. Git's binary auto-detection would
+# almost certainly catch these anyway, but a line-ending "fix" applied to a
+# texture corrupts it silently and only shows up as a missing icon in-game,
+# so say it explicitly.
+*.tga binary
+*.png binary
