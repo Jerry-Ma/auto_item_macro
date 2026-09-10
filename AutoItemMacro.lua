@@ -24,6 +24,7 @@ local Item             = _G.Item
 
 local MAX_MACRO_LENGTH     = 255
 local MAX_MACRO_NAME_LEN   = 16
+local MACRO_NAME_PREFIX    = "aim_"  -- prefixes generated default names only
 local DEFAULT_ICON         = 134400  -- INV_Misc_QuestionMark
 local PRESET_ROW_HEIGHT    = 30
 local ITEM_ROW_HEIGHT      = 35
@@ -161,10 +162,12 @@ end
 
 -- ── Preset management ─────────────────────────────────────────────────────────
 
+-- Generated names carry MACRO_NAME_PREFIX so the macros this addon creates are
+-- recognisable in the game's macro list. Names the user types are left alone.
 local function GenerateUniqueName()
     local i = 1
     while true do
-        local candidate = ("Macro%d"):format(i)
+        local candidate = MACRO_NAME_PREFIX .. ("macro%d"):format(i)
         if #candidate > MAX_MACRO_NAME_LEN then
             candidate = candidate:sub(1, MAX_MACRO_NAME_LEN)
         end
