@@ -5,9 +5,8 @@
 ## Version: @project-version@
 ## IconTexture: Interface\AddOns\AutoItemMacro\Media\Logo
 ## AddonCompartmentFunc: AutoItemMacro_OnCompartmentClick
+## X-Curse-Project-ID: 1689791
 ## SavedVariables: AutoItemMacroDB
 ## Category-enUS: Combat
-
-## X-Curse-Project-ID: 1689791
 
 AutoItemMacro.lua

@@ -1,11 +1,23 @@
--- AutoItemMacro | Version: 1.0.0
+-- AutoItemMacro
 -- A general-purpose consumable macro generator for WoW.
 -- Users define named macro presets, each with a priority-ordered item list.
 -- The addon generates valid WoW macros that automatically use the highest-priority
 -- item currently in the player's bags.
 
 local ADDON_NAME = "AutoItemMacro"
-local ADDON_VERSION = "1.0.0"
+
+-- The .toc is the only place a version is written, and even there it is the
+-- packager's project-version token, filled in from the git tag at release
+-- time. Nothing to bump by hand.
+--
+-- Unpackaged checkouts still hold the raw token, which is what the "@" test
+-- catches -- a released version never contains one. Note that the token is
+-- matched by character and never spelled out anywhere in this file, comments
+-- included: the packager substitutes inside .lua as well as .toc, so a literal
+-- copy of it would come back as the version string and turn this check into
+-- "if 1.0.0 then call it dev".
+local ADDON_VERSION = C_AddOns.GetAddOnMetadata(ADDON_NAME, "Version")
+if ADDON_VERSION:find("@", 1, true) then ADDON_VERSION = "dev" end
 
 -- Cache frequently used globals
 local _G               = _G
