@@ -270,7 +270,7 @@ local function SetItemRow(row, item, index)
     local name = C_Item.GetItemNameByID(item.id)
     if not name then
         C_Item.RequestLoadItemDataByID(item.id)
-        name = "Loading… (" .. item.id .. ")"
+        name = "Loading... (" .. item.id .. ")"
     end
     row.icon:SetTexture(C_Item.GetItemIconByID(item.id) or ns.DEFAULT_ICON)
 
@@ -283,7 +283,12 @@ local function SetItemRow(row, item, index)
         row.status:SetText("|cff44ff44x" .. count .. "|r")
     else
         row.text:SetTextColor(0.45, 0.45, 0.45)
-        row.status:SetText("|cffff4444 ✗|r")
+        -- ASCII, deliberately. This was U+2717 BALLOT X, which renders as a
+        -- hollow box on any font that lacks the glyph -- and tinted red by the
+        -- colour code, so it looked like a deliberate red square rather than a
+        -- missing character. Custom and non-Latin fonts frequently have no
+        -- dingbats, and this addon ships to whoever installs it.
+        row.status:SetText("|cffff4444--|r")
     end
 
     local mod = item.mod or "default"
@@ -337,7 +342,7 @@ RefreshItemList = function()
     if body ~= "" then
         mainFrame.previewText:SetText("|cffaaaaaa" .. body .. "|r")
     else
-        mainFrame.previewText:SetText("|cff555555(no items in bags — macro will be empty)|r")
+        mainFrame.previewText:SetText("|cff555555(no items in bags - macro will be empty)|r")
     end
 end
 

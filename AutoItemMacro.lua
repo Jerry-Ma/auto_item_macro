@@ -469,9 +469,12 @@ _G.SlashCmdList["AUTOITEMMACRO"] = function(msg)
 
     elseif msg == "help" then
         ns.PrintRaw(LOGO_INLINE .. "|cffffff00AutoItemMacro|r commands:")
-        ns.PrintRaw("  |cffffd700/aim|r           — open / close the options window")
-        ns.PrintRaw("  |cffffd700/aim update|r     — force-update all macro presets")
-        ns.PrintRaw("  |cffffd700/aim help|r       — show this help text")
+        -- ASCII only, like every other string this addon shows. A font with no
+        -- glyph for a character draws a hollow box instead, and the fonts this
+        -- lands on are not ours to choose.
+        ns.PrintRaw("  |cffffd700/aim|r           - open / close the options window")
+        ns.PrintRaw("  |cffffd700/aim update|r     - force-update all macro presets")
+        ns.PrintRaw("  |cffffd700/aim help|r       - show this help text")
 
     elseif msg == "" then
         ns.ToggleUI()
