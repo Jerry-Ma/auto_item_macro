@@ -4,6 +4,6 @@ ignore:
   - .github
   - README.md
   - Tools
-  # The CurseForge project avatar, uploaded on the website. The game cannot
-  # load PNG -- Media/Logo.tga is the one that ships.
+  # The CurseForge project avatar, uploaded on the website rather than shipped.
+  # Media/Logo.tga is the one the addon actually draws.
   - Media/Avatar.png

@@ -48,6 +48,11 @@ local DEFAULT_ICON       = 134400  -- INV_Misc_QuestionMark
 -- Extension omitted on purpose: the client appends it. This is the reduced
 -- mark, not Media/Avatar.png -- everything in-game draws the logo at 14-20px,
 -- where the avatar's frame and wordmark turn to mush.
+--
+-- TGA rather than PNG is a packaging choice, not a technical one: an earlier
+-- comment here claimed the client cannot load PNG, which is wrong (EllesmereUI
+-- ships .png art and SetTextures it). Both formats work; the TGA is 64x64, a
+-- power of two, which spares it the padding WoW applies to any other size.
 local LOGO_TEXTURE = "Interface\\AddOns\\AutoItemMacro\\Media\\Logo"
 -- The logo inline in a chat line, sized to sit on the text baseline.
 local LOGO_INLINE  = "|T" .. LOGO_TEXTURE .. ":14:14:0:0|t "
