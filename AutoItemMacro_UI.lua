@@ -385,6 +385,12 @@ local function BuildBottomBar(f)
     f.minimapChk:SetPoint("LEFT", f.autoUpdateChk.lbl, "RIGHT", 24, 0)
     f.minimapChk.lbl = MakeLabel(f.minimapChk, "Minimap button")
     f.minimapChk.lbl:SetPoint("LEFT", f.minimapChk, "RIGHT", 4, 0)
+    -- The last thing on the row before the button, and everything to its left
+    -- grows with the font. Bounding it against the button means a wide face
+    -- clips this caption rather than sliding two labels underneath it.
+    f.minimapChk.lbl:SetPoint("RIGHT", f.updateBtn, "LEFT", -8, 0)
+    f.minimapChk.lbl:SetJustifyH("LEFT")
+    f.minimapChk.lbl:SetWordWrap(false)
     f.minimapChk:SetScript("OnClick", function(self)
         local db = ns.GetDB()
         if not db then return end
@@ -429,7 +435,9 @@ local function BuildRenameRow(f, col)
     label:SetPoint("LEFT", 6, 0)
 
     f.renameBox = CreateFrame("EditBox", nil, col, "InputBoxTemplate")
-    f.renameBox:SetSize(170, FIELD_H)
+    -- 16 characters never need 170px, and the width taken here is width the
+    -- hint to the right does not get.
+    f.renameBox:SetSize(150, FIELD_H)
     f.renameBox:SetPoint("LEFT", label, "RIGHT", 6, 0)
     f.renameBox:SetAutoFocus(false)
     f.renameBox:SetMaxLetters(ns.MAX_MACRO_NAME_LEN)
@@ -453,9 +461,20 @@ local function BuildRenameRow(f, col)
     end)
     f.renameBox:Disable()
 
+    -- Anchored on BOTH sides, so it has a width rather than taking one.
+    --
+    -- With only a LEFT anchor a FontString is as wide as its text, and this one
+    -- ran off the right edge of the window. It fits in the default font, which
+    -- is exactly the trap: the label and the hint both grow with the font, and
+    -- a player running a custom or non-Latin face gets wider Latin glyphs than
+    -- the layout was measured against. Two anchors plus no wrapping means the
+    -- worst case is an ellipsis instead of text outside the frame.
     local tip = MakeLabel(col, "(max " .. ns.MAX_MACRO_NAME_LEN ..
                              " chars, Enter to confirm)", "GameFontDisableSmall")
     tip:SetPoint("LEFT", f.renameBox, "RIGHT", 8, 0)
+    tip:SetPoint("RIGHT", col, "RIGHT", -2, 0)
+    tip:SetJustifyH("LEFT")
+    tip:SetWordWrap(false)
 end
 
 -- Everything under the item list, built bottom-up from the bottom bar so the
@@ -477,8 +496,14 @@ local function BuildItemControls(f, col)
     -- An InputBoxTemplate used purely as a sunken frame; the EditBox itself is
     -- disabled and an ordinary Frame on top of it receives the drop.
     local dropSkin = CreateFrame("EditBox", nil, col, "InputBoxTemplate")
-    dropSkin:SetSize(340, FIELD_H)
+    -- Fills the space left of the column edge rather than claiming a fixed 340.
+    -- Same reasoning as the rename hint: the label to its left grows with the
+    -- font, and a fixed width added to a variable one is what runs off the
+    -- edge. Filling also makes the drop target as large as it can be, which is
+    -- what you want from a drop target.
+    dropSkin:SetHeight(FIELD_H)
     dropSkin:SetPoint("LEFT", dropLabel, "RIGHT", 8, 0)
+    dropSkin:SetPoint("RIGHT", col, "RIGHT", -2, 0)
     dropSkin:SetEnabled(false)
 
     local dropZone = CreateFrame("Frame", nil, col)
@@ -487,7 +512,12 @@ local function BuildItemControls(f, col)
     dropZone:EnableMouse(true)
 
     local dropText = MakeLabel(dropZone, DROP_PROMPT, "GameFontHighlightSmall", 0.6, 0.6, 0.6)
-    dropText:SetPoint("CENTER")
+    -- Bounded by the zone rather than centred on it, so a long prompt in a wide
+    -- font is clipped to the sunken box instead of spilling out of both sides.
+    dropText:SetPoint("LEFT", 4, 0)
+    dropText:SetPoint("RIGHT", -4, 0)
+    dropText:SetJustifyH("CENTER")
+    dropText:SetWordWrap(false)
 
     local function ResetPrompt()
         dropText:SetText(DROP_PROMPT)
