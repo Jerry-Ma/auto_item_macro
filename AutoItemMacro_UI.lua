@@ -26,6 +26,10 @@ local C_Item           = _G.C_Item
 -- ── Layout ────────────────────────────────────────────────────────────────────
 
 local FRAME_W, FRAME_H  = 680, 540
+-- Small enough to still be useful, large enough that the two columns do not
+-- collapse into each other. The window is resizable, so these are a floor
+-- rather than a guess at the right size.
+local MIN_W, MIN_H      = 600, 400
 local PAD               = 10   -- window margin
 local GAP               = 8    -- between stacked elements
 local HEADER_Y          = -34  -- first row below the title bar
@@ -71,6 +75,29 @@ local function MakeLabel(parent, text, template, r, g, b)
     fs:SetText(text)
     if r then fs:SetTextColor(r, g, b) end
     return fs
+end
+
+-- Gives a set of form labels one shared width: the widest of them, MEASURED in
+-- whatever font the player actually has.
+--
+-- Every field in this window is anchored to its own label's right edge, so
+-- padding the labels to a common width is what puts the fields in a column --
+-- no field has to be re-anchored, and none of the offsets are authored as
+-- numbers. That is the difference between a layout that survives a font change
+-- and one that was measured once against the default face and then clipped
+-- when it stopped fitting.
+local function AlignLabels(...)
+    local widest = 0
+    for i = 1, select("#", ...) do
+        local w = select(i, ...):GetStringWidth() or 0
+        if w > widest then widest = w end
+    end
+    for i = 1, select("#", ...) do
+        local fs = select(i, ...)
+        fs:SetWidth(widest)
+        fs:SetJustifyH("LEFT")
+    end
+    return widest
 end
 
 -- The small square buttons that live on a list row. They differ only in width,
@@ -435,10 +462,12 @@ local function BuildRenameRow(f, col)
     label:SetPoint("LEFT", 6, 0)
 
     f.renameBox = CreateFrame("EditBox", nil, col, "InputBoxTemplate")
-    -- 16 characters never need 170px, and the width taken here is width the
-    -- hint to the right does not get.
-    f.renameBox:SetSize(150, FIELD_H)
+    -- Fills the row instead of taking a fixed width. Nothing follows it now
+    -- that the hint has moved to a tooltip, so there is no reason to leave
+    -- space for something that is not there.
+    f.renameBox:SetHeight(FIELD_H)
     f.renameBox:SetPoint("LEFT", label, "RIGHT", 6, 0)
+    f.renameBox:SetPoint("RIGHT", col, "RIGHT", -2, 0)
     f.renameBox:SetAutoFocus(false)
     f.renameBox:SetMaxLetters(ns.MAX_MACRO_NAME_LEN)
     f.renameBox:SetScript("OnEnterPressed", function(self)
@@ -461,20 +490,23 @@ local function BuildRenameRow(f, col)
     end)
     f.renameBox:Disable()
 
-    -- Anchored on BOTH sides, so it has a width rather than taking one.
-    --
-    -- With only a LEFT anchor a FontString is as wide as its text, and this one
-    -- ran off the right edge of the window. It fits in the default font, which
-    -- is exactly the trap: the label and the hint both grow with the font, and
-    -- a player running a custom or non-Latin face gets wider Latin glyphs than
-    -- the layout was measured against. Two anchors plus no wrapping means the
-    -- worst case is an ellipsis instead of text outside the frame.
-    local tip = MakeLabel(col, "(max " .. ns.MAX_MACRO_NAME_LEN ..
-                             " chars, Enter to confirm)", "GameFontDisableSmall")
-    tip:SetPoint("LEFT", f.renameBox, "RIGHT", 8, 0)
-    tip:SetPoint("RIGHT", col, "RIGHT", -2, 0)
-    tip:SetJustifyH("LEFT")
-    tip:SetWordWrap(false)
+    -- The hint used to sit to the right of the box as a third element on the
+    -- row, and it was what overflowed the window. Clipping it was no fix:
+    -- truncated help you cannot finish reading is worse than no help, because
+    -- it still costs the space. As a tooltip it is always readable in full and
+    -- competes for no width at all.
+    f.renameBox:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+        GameTooltip:SetText("Macro Name", 1, 0.82, 0)
+        GameTooltip:AddLine(
+            ("At most %d characters -- the game's own limit for a macro name.")
+                :format(ns.MAX_MACRO_NAME_LEN), 0.7, 0.7, 0.7, true)
+        GameTooltip:AddLine("Press Enter to confirm.", 0.7, 0.7, 0.7)
+        GameTooltip:Show()
+    end)
+    f.renameBox:SetScript("OnLeave", function() GameTooltip:Hide() end)
+
+    return label
 end
 
 -- Everything under the item list, built bottom-up from the bottom bar so the
@@ -578,7 +610,36 @@ local function BuildItemControls(f, col)
     f.addItemBtn:SetScript("OnClick", function() SubmitID(f.addItemBox) end)
     f.addItemBtn:Disable()
 
-    return addLabel
+    return addLabel, dropLabel
+end
+
+-- ── Geometry ──────────────────────────────────────────────────────────────
+-- Size and position persist, because a window you can resize but that forgets
+-- is a window you resize every session.
+
+local function SaveGeometry(f)
+    local db = ns.GetDB()
+    if not db then return end
+    db.ui = db.ui or {}
+    local point, _, relPoint, x, y = f:GetPoint(1)
+    db.ui.point, db.ui.relPoint = point, relPoint
+    db.ui.x, db.ui.y = x, y
+    db.ui.w, db.ui.h = f:GetWidth(), f:GetHeight()
+end
+
+local function RestoreGeometry(f)
+    local db = ns.GetDB()
+    local ui = db and db.ui
+    if not ui then return end
+    -- Clamped to the same floor the resize honours: a saved size from an older
+    -- build with smaller bounds would otherwise reopen unusably small.
+    if ui.w and ui.h then
+        f:SetSize(math.max(ui.w, MIN_W), math.max(ui.h, MIN_H))
+    end
+    if ui.point then
+        f:ClearAllPoints()
+        f:SetPoint(ui.point, UIParent, ui.relPoint or ui.point, ui.x or 0, ui.y or 0)
+    end
 end
 
 -- ── Window ────────────────────────────────────────────────────────────────────
@@ -593,7 +654,10 @@ function ns.BuildUI()
     f:EnableMouse(true)
     f:RegisterForDrag("LeftButton")
     f:SetScript("OnDragStart", f.StartMoving)
-    f:SetScript("OnDragStop", f.StopMovingOrSizing)
+    f:SetScript("OnDragStop", function(self)
+        self:StopMovingOrSizing()
+        SaveGeometry(self)
+    end)
     f:Hide()
     f.TitleText:SetText("|cffffff00Auto|rItemMacro  |cff888888v" .. ns.ADDON_VERSION .. "|r")
 
@@ -604,7 +668,30 @@ function ns.BuildUI()
     f.logo:SetPoint("TOPLEFT", 8, -4)
     f.logo:SetTexture(ns.LOGO_TEXTURE)
 
+    -- Resizable, which is the actual answer to "the text does not fit".
+    --
+    -- Every panel in this window is anchored to a neighbour or to a column
+    -- container, so widening the frame widens the item list, the drop zone and
+    -- the name field without a single recalculation here. That was the point of
+    -- laying it out relatively; this is where it pays for itself. Clipping a
+    -- caption only hid the symptom -- being able to make room removes it.
+    f:SetResizable(true)
+    f:SetResizeBounds(MIN_W, MIN_H)
+
+    local grip = CreateFrame("Button", nil, f)
+    grip:SetSize(16, 16)
+    grip:SetPoint("BOTTOMRIGHT", -4, 4)
+    grip:SetNormalTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Up")
+    grip:SetHighlightTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Highlight")
+    grip:SetPushedTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Down")
+    grip:SetScript("OnMouseDown", function() f:StartSizing("BOTTOMRIGHT") end)
+    grip:SetScript("OnMouseUp", function()
+        f:StopMovingOrSizing()
+        SaveGeometry(f)
+    end)
+
     mainFrame = f
+    RestoreGeometry(f)
     tinsert(_G.UISpecialFrames, "AutoItemMacroFrame")
 
     local bottomBar = BuildBottomBar(f)
@@ -631,9 +718,15 @@ function ns.BuildUI()
     nameRow:SetPoint("TOPLEFT")
     nameRow:SetPoint("TOPRIGHT")
     nameRow:SetHeight(FIELD_H)
-    BuildRenameRow(f, nameRow)
+    local renameLabel = BuildRenameRow(f, nameRow)
 
-    local addLabel = BuildItemControls(f, rightCol)
+    local addLabel, dropLabel = BuildItemControls(f, rightCol)
+
+    -- The three rows of the right column read as a form now: one label column,
+    -- one field column, both derived from the text rather than declared. Done
+    -- here rather than in the builders because it needs all three labels to
+    -- exist before any of them can be sized.
+    AlignLabels(renameLabel, addLabel, dropLabel)
 
     -- The item list is built last because it claims whatever vertical space the
     -- name row above and the controls below have not taken.
