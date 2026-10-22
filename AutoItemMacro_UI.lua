@@ -58,6 +58,10 @@ local presetRowPool       = {}
 local itemRowPool         = {}
 
 local RefreshPresetList, RefreshItemList
+-- Forward-declared: the bottom bar's buttons open it and are built before it.
+-- A local defined further down reads as a nil GLOBAL from up here, and says
+-- nothing about it until the line actually runs.
+local ShowTransfer
 
 local function SelectedPreset()
     return ns.GetPreset(selectedPresetIndex)
@@ -484,6 +488,37 @@ local function BuildBottomBar(f)
         ns.Print("All macros updated.")
     end)
 
+    -- Right to left, so each one only has to know about its neighbour and the
+    -- row re-flows on its own if a caption changes length.
+    f.exportBtn = CreateFrame("Button", nil, bar, "UIPanelButtonTemplate")
+    f.exportBtn:SetSize(70, BOTTOM_BAR_H)
+    f.exportBtn:SetPoint("RIGHT", f.updateBtn, "LEFT", -GAP, 0)
+    f.exportBtn:SetText("Export")
+    f.exportBtn:SetScript("OnClick", function()
+        local text, err = ns.ExportPresets()
+        if not text then return ns.Print(err) end
+        ShowTransfer("Export Macro Presets", text)
+    end)
+
+    f.importBtn = CreateFrame("Button", nil, bar, "UIPanelButtonTemplate")
+    f.importBtn:SetSize(70, BOTTOM_BAR_H)
+    f.importBtn:SetPoint("RIGHT", f.exportBtn, "LEFT", -4, 0)
+    f.importBtn:SetText("Import")
+    f.importBtn:SetScript("OnClick", function()
+        ShowTransfer("Import Macro Presets", "", "Import", function(text)
+            local added, renamed, skipped = ns.ImportPresets(text)
+            if not added then
+                -- The second return is the reason when the first is nil.
+                return renamed
+            end
+            RefreshAll()
+            local msg = ("Imported %d preset%s"):format(added, added == 1 and "" or "s")
+            if renamed > 0 then msg = msg .. (", %d renamed"):format(renamed) end
+            if skipped > 0 then msg = msg .. (", %d skipped"):format(skipped) end
+            return msg .. "."
+        end)
+    end)
+
     f.autoUpdateChk = CreateFrame("CheckButton", nil, bar, "UICheckButtonTemplate")
     f.autoUpdateChk:SetSize(BOTTOM_BAR_H, BOTTOM_BAR_H)
     f.autoUpdateChk:SetPoint("LEFT", 2, 0)
@@ -501,10 +536,11 @@ local function BuildBottomBar(f)
     f.minimapChk:SetPoint("LEFT", f.autoUpdateChk.lbl, "RIGHT", 24, 0)
     f.minimapChk.lbl = MakeLabel(f.minimapChk, "Minimap button")
     f.minimapChk.lbl:SetPoint("LEFT", f.minimapChk, "RIGHT", 4, 0)
-    -- The last thing on the row before the button, and everything to its left
-    -- grows with the font. Bounding it against the button means a wide face
-    -- clips this caption rather than sliding two labels underneath it.
-    f.minimapChk.lbl:SetPoint("RIGHT", f.updateBtn, "LEFT", -8, 0)
+    -- The last thing on the row before the buttons, and everything to its left
+    -- grows with the font. Bounding it against the leftmost button means a
+    -- wide face clips this caption rather than sliding two labels underneath
+    -- it.
+    f.minimapChk.lbl:SetPoint("RIGHT", f.importBtn, "LEFT", -8, 0)
     f.minimapChk.lbl:SetJustifyH("LEFT")
     f.minimapChk.lbl:SetWordWrap(false)
     f.minimapChk:SetScript("OnClick", function(self)
@@ -515,6 +551,90 @@ local function BuildBottomBar(f)
     end)
 
     return bar
+end
+
+-- ── Transfer window ───────────────────────────────────────────────────────────
+--
+-- One window, built once and pointed at either job. Export fills it and
+-- selects everything so Ctrl+C works without aiming; import leaves it empty
+-- and gives the button something to do with what gets pasted. The only
+-- difference between the two is whether that button is there.
+--
+-- A plain multi-line EditBox in a scroll frame, because that is the only
+-- widget the game offers that a player can copy OUT of. There is no clipboard
+-- API: the text has to be selectable on screen.
+local transferFrame
+
+ShowTransfer = function(title, text, actionLabel, onAction)
+    if not transferFrame then
+        local tf = CreateFrame("Frame", "AutoItemMacroTransferFrame", UIParent,
+                               "BasicFrameTemplateWithInset")
+        tf:SetSize(460, 340)
+        tf:SetPoint("CENTER")
+        tf:SetFrameStrata("DIALOG")
+        tf:EnableMouse(true)
+        tf:SetMovable(true)
+        tf:RegisterForDrag("LeftButton")
+        tf:SetScript("OnDragStart", tf.StartMoving)
+        tf:SetScript("OnDragStop", tf.StopMovingOrSizing)
+        -- Escape closes it, the way every other window in the game does.
+        tinsert(_G.UISpecialFrames, "AutoItemMacroTransferFrame")
+
+        tf.title = MakeLabel(tf, "", "GameFontNormal", 1, 0.82, 0)
+        tf.title:SetPoint("TOP", 0, -5)
+
+        tf.actionBtn = CreateFrame("Button", nil, tf, "UIPanelButtonTemplate")
+        tf.actionBtn:SetSize(120, BOTTOM_BAR_H)
+        tf.actionBtn:SetPoint("BOTTOMRIGHT", -PAD, PAD)
+
+        tf.status = MakeLabel(tf, "", "GameFontNormalSmall", 0.75, 0.75, 0.75)
+        tf.status:SetPoint("BOTTOMLEFT", PAD + 2, PAD + 5)
+        tf.status:SetPoint("RIGHT", tf.actionBtn, "LEFT", -GAP, 0)
+        tf.status:SetJustifyH("LEFT")
+        tf.status:SetWordWrap(false)
+
+        local scroll = CreateFrame("ScrollFrame", nil, tf, "UIPanelScrollFrameTemplate")
+        scroll:SetPoint("TOPLEFT", PAD, -30)
+        scroll:SetPoint("BOTTOMRIGHT", -SCROLLBAR_W - PAD, BOTTOM_BAR_H + PAD * 2)
+
+        local edit = CreateFrame("EditBox", nil, scroll)
+        edit:SetMultiLine(true)
+        edit:SetAutoFocus(false)
+        edit:SetFontObject("ChatFontNormal")
+        edit:SetWidth(1)
+        edit:SetScript("OnEscapePressed", function() tf:Hide() end)
+        scroll:SetScrollChild(edit)
+        scroll:SetScript("OnSizeChanged", function(_, w) edit:SetWidth(w) end)
+        -- Clicking anywhere in the box focuses it, not just on a line of text.
+        scroll:SetScript("OnMouseDown", function() edit:SetFocus() end)
+
+        tf.edit = edit
+        transferFrame = tf
+    end
+
+    local tf = transferFrame
+    tf.title:SetText(title)
+    tf.status:SetText("")
+    tf.edit:SetText(text or "")
+    tf.edit:SetCursorPosition(0)
+
+    if actionLabel then
+        tf.actionBtn:SetText(actionLabel)
+        tf.actionBtn:SetScript("OnClick", function()
+            local message = onAction(tf.edit:GetText() or "")
+            tf.status:SetText(message or "")
+        end)
+        tf.actionBtn:Show()
+    else
+        tf.actionBtn:Hide()
+    end
+
+    tf:Show()
+    tf:Raise()
+    tf.edit:SetFocus()
+    -- Selecting the lot is what makes an export one keystroke to copy. On an
+    -- import there is nothing to select, and the focus is the point.
+    if text and text ~= "" then tf.edit:HighlightText() end
 end
 
 -- Preset list plus its "new preset" button. The list fills whatever is left

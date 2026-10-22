@@ -331,6 +331,115 @@ function ns.RenamePreset(index, newName)
     return true
 end
 
+-- ── Import / export ───────────────────────────────────────────────────────────
+--
+-- One line per preset, with the NAME LAST:
+--
+--     AutoItemMacro 1 <preset count>
+--     212283:a,210796,212265:c;Flask
+--
+-- The name is the only field that can hold anything -- it is whatever the
+-- player typed, semicolons included -- so it goes at the end and the split
+-- takes the FIRST semicolon. Everything before that point is digits, colons
+-- and commas, so there is no separator to collide with and nothing to escape.
+-- Put the name first and a name containing the separator would silently eat
+-- the item list.
+--
+-- The modifier is a single letter rather than the word, because the word is
+-- the internal spelling and this string is something a player pastes into a
+-- forum post. "default" is absent rather than spelled, since it is the common
+-- case and absence is the smallest thing to read.
+local MOD_TO_CODE = { alt = "a", ctrl = "c", shift = "s", nomod = "n" }
+local CODE_TO_MOD = { a = "alt", c = "ctrl", s = "shift", n = "nomod" }
+
+local EXPORT_HEADER = "AutoItemMacro 1"
+
+function ns.ExportPresets()
+    if not db or #db.presets == 0 then return nil, "No presets to export." end
+
+    local lines = {}
+    for _, preset in ipairs(db.presets) do
+        local parts = {}
+        for _, item in ipairs(preset.items) do
+            local code = item.mod and MOD_TO_CODE[item.mod]
+            parts[#parts + 1] = code and (item.id .. ":" .. code) or tostring(item.id)
+        end
+        lines[#lines + 1] = table.concat(parts, ",") .. ";" .. preset.name
+    end
+
+    tinsert(lines, 1, EXPORT_HEADER .. " " .. #lines)
+    return table.concat(lines, "\n")
+end
+
+-- Imported presets are ADDED, never merged into one of the same name. A name
+-- that is taken gets a numbered suffix instead: an import is someone else's
+-- list arriving, and quietly rewriting a preset the player built because the
+-- names happen to match is the one outcome that cannot be undone from here.
+local function FreeName(wanted)
+    local base = strtrim(wanted or ""):sub(1, MAX_MACRO_NAME_LEN)
+    if base == "" then base = MACRO_NAME_PREFIX .. "import" end
+
+    local candidate, n = base, 1
+    while true do
+        local taken = false
+        for _, p in ipairs(db.presets) do
+            if p.name == candidate then taken = true; break end
+        end
+        if not taken then return candidate, candidate ~= base end
+        n = n + 1
+        local suffix = " " .. n
+        candidate = base:sub(1, MAX_MACRO_NAME_LEN - #suffix) .. suffix
+    end
+end
+
+-- Returns added, renamed, skipped -- or nil plus a reason if the text is not
+-- an export at all. A malformed LINE is skipped rather than failing the whole
+-- import: a paste that lost a line to a forum's formatting should still bring
+-- in the rest.
+function ns.ImportPresets(text)
+    if InCombatLockdown() then return nil, "Can't import during combat." end
+    if type(text) ~= "string" or strtrim(text) == "" then
+        return nil, "Nothing pasted."
+    end
+
+    local added, renamed, skipped = 0, 0, 0
+    local sawHeader = false
+
+    for line in text:gmatch("[^\r\n]+") do
+        if line:sub(1, #EXPORT_HEADER) == EXPORT_HEADER then
+            sawHeader = true
+        elseif strtrim(line) ~= "" then
+            local body, name = line:match("^([^;]*);(.*)$")
+            if not name or strtrim(name) == "" then
+                skipped = skipped + 1
+            else
+                local items = {}
+                for part in body:gmatch("[^,]+") do
+                    local id, code = part:match("^%s*(%d+):?(%a?)%s*$")
+                    if id then
+                        items[#items + 1] = {
+                            id = tonumber(id),
+                            mod = CODE_TO_MOD[code],
+                        }
+                    end
+                end
+
+                local finalName, wasRenamed = FreeName(name)
+                local preset = { name = finalName, items = items }
+                tinsert(db.presets, preset)
+                UpdateMacro(preset)
+                added = added + 1
+                if wasRenamed then renamed = renamed + 1 end
+            end
+        end
+    end
+
+    if not sawHeader and added == 0 then
+        return nil, "That does not look like an AutoItemMacro export."
+    end
+    return added, renamed, skipped
+end
+
 -- Item data may not be loaded yet, so this completes asynchronously. onAdded is
 -- called only if an item was actually appended -- not for a duplicate.
 function ns.AddItemToPreset(preset, itemID, onAdded)

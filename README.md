@@ -50,6 +50,26 @@ New presets are named `aim_macro1`, `aim_macro2`, … so the macros this addon o
 easy to spot in the game's macro list. Rename them to anything you like — the prefix
 applies only to the generated defaults.
 
+### Sharing presets
+
+**Export** opens a window with your whole preset list as one block of text, already
+selected — Ctrl+C and paste it wherever. **Import** takes that text back and adds the
+presets to your list.
+
+Import never overwrites. A preset whose name you already use is added under a numbered
+name (`Flask 2`), so someone else's list can never quietly replace one you built. A line
+that arrives mangled — a forum ate it, a paste lost half of it — is skipped on its own
+rather than failing the whole import, and the window reports how many were added,
+renamed and skipped.
+
+The format is one line per preset, item IDs first and the name last:
+
+```
+AutoItemMacro 1 2
+212283,210796:a;Flask
+190384:c,191383;Potion
+```
+
 Other commands:
 
 - `/aim update` — force-update all macro presets immediately
