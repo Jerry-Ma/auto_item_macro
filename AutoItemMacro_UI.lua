@@ -21,7 +21,11 @@ local InCombatLockdown = _G.InCombatLockdown
 local GetCursorInfo    = _G.GetCursorInfo
 local ClearCursor      = _G.ClearCursor
 local tinsert          = _G.table.insert
+local tsort            = _G.table.sort
 local C_Item           = _G.C_Item
+local PickupMacro      = _G.PickupMacro
+local GetMacroInfo     = _G.GetMacroInfo
+local GetMacroIndexByName = _G.GetMacroIndexByName
 
 -- ── Layout ────────────────────────────────────────────────────────────────────
 
@@ -156,8 +160,18 @@ local function CreatePresetRow(index)
     end)
     row.delBtn:SetPoint("RIGHT", -2, 0)
 
+    -- The macro's own icon, which is both the drag handle and the answer to
+    -- "does this preset have a macro yet". A preset whose macro has not been
+    -- generated shows nothing here, and nothing is what dragging it does.
+    row.icon = row:CreateTexture(nil, "ARTWORK")
+    row.icon:SetSize(PRESET_ROW_H - 6, PRESET_ROW_H - 6)
+    row.icon:SetPoint("LEFT", 4, 0)
+    -- Blizzard's icon art is drawn with a baked border; this is the standard
+    -- trim for it, the same one the item rows use.
+    row.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+
     row.label = MakeLabel(row, "", "GameFontNormalSmall")
-    row.label:SetPoint("LEFT", 6, 0)
+    row.label:SetPoint("LEFT", row.icon, "RIGHT", 5, 0)
     row.label:SetPoint("RIGHT", row.delBtn, "LEFT", -4, 0)
     row.label:SetJustifyH("LEFT")
     row.label:SetWordWrap(false)
@@ -167,12 +181,60 @@ local function CreatePresetRow(index)
         RefreshAll()
     end)
 
+    -- DRAG THE ROW ONTO AN ACTION BAR. PickupMacro puts the macro on the
+    -- cursor exactly as dragging it out of Blizzard's macro window does, so
+    -- the drop is theirs to handle and every bar addon that accepts a macro
+    -- accepts this one.
+    --
+    -- The whole row is the handle rather than the icon alone. A 14px target
+    -- is a fiddly thing to catch, and there is nothing else a drag on one of
+    -- these rows could mean -- the list is sorted by name, so it has no order
+    -- to rearrange. Clicking still selects: OnDragStart only fires once the
+    -- cursor has actually moved.
+    -- Said out loud, because a draggable row looks exactly like one that is
+    -- not. The hint is only shown while there is a macro to drag.
+    row:SetScript("OnEnter", function(self)
+        if not row.macroName then return end
+        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+        GameTooltip:SetText(row.macroName, 1, 1, 1)
+        GameTooltip:AddLine("Drag onto an action bar.", 0.7, 0.7, 0.7)
+        GameTooltip:Show()
+    end)
+    row:SetScript("OnLeave", function() GameTooltip:Hide() end)
+
+    row:RegisterForDrag("LeftButton")
+    row:SetScript("OnDragStart", function()
+        if not row.macroName then return end
+        -- Placing an action is protected in combat. The pickup itself would
+        -- work and the drop would silently fail, which looks like the drag
+        -- not working rather than like a rule.
+        if InCombatLockdown() then
+            ns.Print("Can't move macros to the action bar in combat.")
+            return
+        end
+        PickupMacro(row.macroName)
+    end)
+
     return row
 end
 
 local function SetPresetRow(row, preset, index)
     row.presetIndex = index
     row.label:SetText(preset.name)
+
+    -- The macro is named after the preset, so the preset's name is the lookup.
+    -- Read every refresh rather than cached: the icon changes when the macro
+    -- is regenerated, and the macro stops existing if it is deleted outside
+    -- this window.
+    local macroIndex = GetMacroIndexByName(preset.name)
+    if macroIndex and macroIndex > 0 then
+        row.macroName = preset.name
+        row.icon:SetTexture((select(2, GetMacroInfo(macroIndex))))
+        row.icon:Show()
+    else
+        row.macroName = nil
+        row.icon:Hide()
+    end
 
     if selectedPresetIndex == index then
         row.bg:SetColorTexture(0.25, 0.45, 0.75, 0.55)
@@ -184,21 +246,48 @@ local function SetPresetRow(row, preset, index)
     row:Show()
 end
 
+-- The order the list is DRAWN in, which is not the order the presets are
+-- stored in. Sorted by name, because that is how you look one up once there
+-- are more than a handful of them.
+--
+-- The storage keeps its own order and its own indices, and that is the point.
+-- A preset's index is its identity everywhere else in this file -- the
+-- selection is an index, delete shifts the ones after it, and the item panel
+-- reads the preset at the selected index -- so sorting the real list would
+-- renumber everything under all of it. This sorts a list of indices and hands
+-- each row the index it stands for, so the rows move and nothing else does.
+local function PresetDrawOrder()
+    local order = {}
+    for i = 1, ns.NumPresets() do order[i] = i end
+    tsort(order, function(a, b)
+        local pa, pb = ns.GetPreset(a), ns.GetPreset(b)
+        local na, nb = pa and pa.name or "", pb and pb.name or ""
+        -- Case-insensitive, so "Flask" and "flask" sit together rather than
+        -- in two blocks split by where the capitals happen to sort. The index
+        -- breaks a tie, so two presets of the same name keep a stable order
+        -- instead of swapping places on every refresh.
+        local la, lb = na:lower(), nb:lower()
+        if la ~= lb then return la < lb end
+        return a < b
+    end)
+    return order
+end
+
 RefreshPresetList = function()
     if not mainFrame then return end
     for _, row in ipairs(presetRowPool) do row:Hide() end
 
-    local count = ns.NumPresets()
-    for i = 1, count do
-        local row = presetRowPool[i]
+    local order = PresetDrawOrder()
+    for position, presetIndex in ipairs(order) do
+        local row = presetRowPool[position]
         if not row then
-            row = CreatePresetRow(i)
-            presetRowPool[i] = row
+            row = CreatePresetRow(position)
+            presetRowPool[position] = row
         end
-        SetPresetRow(row, ns.GetPreset(i), i)
+        SetPresetRow(row, ns.GetPreset(presetIndex), presetIndex)
     end
 
-    mainFrame.presetContent:SetHeight(math.max(1, count * PRESET_ROW_H))
+    mainFrame.presetContent:SetHeight(math.max(1, #order * PRESET_ROW_H))
 end
 
 -- ── Item rows (right panel) ───────────────────────────────────────────────────

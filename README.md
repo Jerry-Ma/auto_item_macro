@@ -34,6 +34,13 @@ the addon compartment next to the minimap.
 - Reorder items with the up/down buttons; priority = order in the list
 - Click the modifier badge to cycle `--- / ALT / CTL / SHF / NOM`
 - The macro body preview updates live as you edit
+- **Drag a preset row onto an action bar** to place its macro there — the same as
+  dragging it out of the game's own macro window. Each row shows the macro's icon;
+  a row with no icon has no macro yet.
+
+The preset list is sorted by name, so renaming one moves it. Item priority inside a
+preset is still yours to set with the up/down buttons — only the list of presets is
+sorted.
 
 The minimap button drags around the minimap ring and remembers where you put it.
 Untick **Minimap button** at the bottom of the editor to hide it; the compartment
